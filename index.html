@@ -1,0 +1,922 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+  <title>Qusk AI</title>
+  <script src="https://cdn.tailwindcss.com"></script>
+  <script src="https://unpkg.com/lucide@latest"></script>
+  <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/styles/github.min.css">
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/highlight.min.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/marked/marked.min.js"></script>
+  <style>
+    @media screen and (orientation: portrait) {
+      .landscape-overlay { display: flex !important; }
+      #app { display: none !important; }
+    }
+    @media screen and (orientation: landscape) {
+      .landscape-overlay { display: none !important; }
+      #app { display: flex !important; }
+    }
+    
+    ::-webkit-scrollbar { width: 6px; height: 6px; }
+    ::-webkit-scrollbar-track { background: transparent; }
+    ::-webkit-scrollbar-thumb { background: #d1d5db; border-radius: 3px; }
+    ::-webkit-scrollbar-thumb:hover { background: #9ca3af; }
+    
+    @keyframes fadeIn { from { opacity: 0; transform: translateY(8px); } to { opacity: 1; transform: translateY(0); } }
+    .msg-anim { animation: fadeIn 0.35s cubic-bezier(0.16, 1, 0.3, 1) forwards; }
+    
+    @keyframes pulse-ring {
+      0% { transform: scale(0.95); opacity: 0.5; }
+      50% { transform: scale(1.05); opacity: 1; }
+      100% { transform: scale(0.95); opacity: 0.5; }
+    }
+    .generating-pulse { animation: pulse-ring 2s ease-in-out infinite; }
+    
+    .thinking-box {
+      background: linear-gradient(to right, #f9fafb, #f3f4f6);
+      border-left: 3px solid #6b7280;
+    }
+    
+    pre { position: relative; margin: 0.5rem 0; }
+    pre code { border-radius: 0.5rem; font-size: 0.875rem; }
+    .copy-code-btn {
+      position: absolute; top: 0.5rem; right: 0.5rem;
+      padding: 0.25rem 0.75rem; background: rgba(255,255,255,0.9);
+      border: 1px solid #e5e7eb; border-radius: 0.375rem;
+      font-size: 0.75rem; color: #374151; cursor: pointer;
+      opacity: 0; transition: opacity 0.2s;
+    }
+    pre:hover .copy-code-btn { opacity: 1; }
+    
+    .input-transition {
+      transition: all 0.5s cubic-bezier(0.16, 1, 0.3, 1);
+    }
+    
+    .progress-ring-circle {
+      transition: stroke-dashoffset 0.3s ease-out;
+      transform: rotate(-90deg);
+      transform-origin: 50% 50%;
+    }
+    
+    .sidebar-item { transition: all 0.2s ease; }
+    .sidebar-item:hover .topic-actions { opacity: 1; }
+    
+    .settings-panel {
+      transition: transform 0.3s cubic-bezier(0.16, 1, 0.3, 1);
+    }
+    
+    .shimmer {
+      background: linear-gradient(90deg, #f3f4f6 25%, #e5e7eb 50%, #f3f4f6 75%);
+      background-size: 200% 100%;
+      animation: shimmer 1.5s infinite;
+    }
+    @keyframes shimmer {
+      0% { background-position: 200% 0; }
+      100% { background-position: -200% 0; }
+    }
+  </style>
+</head>
+<body class="bg-white text-gray-900 h-screen w-screen overflow-hidden m-0 p-0">
+
+  <!-- Portrait Warning -->
+  <div class="landscape-overlay fixed inset-0 bg-gray-900 z-[9999] hidden items-center justify-center text-white flex-col gap-4">
+    <i data-lucide="smartphone" class="w-16 h-16 animate-pulse"></i>
+    <p class="text-xl font-medium tracking-wide">请旋转设备至横屏使用</p>
+    <p class="text-sm text-gray-400">Qusk AI 不支持竖屏</p>
+  </div>
+
+  <!-- Main App -->
+  <div id="app" class="h-full w-full flex overflow-hidden">
+
+    <!-- Sidebar -->
+    <aside id="sidebar" class="w-[260px] bg-gray-50 border-r border-gray-200 flex flex-col flex-shrink-0 transition-all duration-300">
+      <div class="h-14 px-4 flex items-center justify-between border-b border-gray-200 bg-gray-50/80 backdrop-blur-sm">
+        <div class="flex items-center gap-2.5">
+          <div class="w-7 h-7 bg-gray-900 rounded-md flex items-center justify-center text-white font-bold text-xs tracking-tight">Q</div>
+          <span class="font-semibold text-gray-800 text-sm tracking-tight">Qusk AI</span>
+        </div>
+        <button onclick="toggleSidebar()" class="lg:hidden p-1.5 hover:bg-gray-200 rounded-md transition-colors">
+          <i data-lucide="panel-left-close" class="w-4 h-4 text-gray-600"></i>
+        </button>
+      </div>
+
+      <div class="p-3">
+        <button onclick="createTopic()" class="w-full flex items-center gap-2 px-3 py-2.5 bg-white border border-gray-300 rounded-lg hover:bg-gray-50 hover:border-gray-400 transition-all text-sm font-medium text-gray-700 shadow-sm active:scale-[0.98]">
+          <i data-lucide="plus" class="w-4 h-4 text-gray-500"></i>
+          <span data-i18n="new_chat">新建话题</span>
+        </button>
+      </div>
+
+      <div class="flex-1 overflow-y-auto px-2 pb-2" id="topicList">
+        <!-- Topics injected here -->
+      </div>
+
+      <div class="p-2 border-t border-gray-200 space-y-1">
+        <button onclick="openFavorites()" class="w-full flex items-center gap-2.5 px-3 py-2 hover:bg-gray-200/70 rounded-lg transition-colors text-sm text-gray-600">
+          <i data-lucide="bookmark" class="w-4 h-4 text-gray-500"></i>
+          <span data-i18n="favorites">收藏</span>
+        </button>
+        <button onclick="openSettings()" class="w-full flex items-center gap-2.5 px-3 py-2 hover:bg-gray-200/70 rounded-lg transition-colors text-sm text-gray-600">
+          <i data-lucide="settings" class="w-4 h-4 text-gray-500"></i>
+          <span data-i18n="settings">设置</span>
+        </button>
+      </div>
+    </aside>
+
+    <!-- Main Chat Area -->
+    <main class="flex-1 flex flex-col relative bg-white min-w-0">
+      <!-- Header -->
+      <header class="h-14 border-b border-gray-200 flex items-center justify-between px-4 bg-white/90 backdrop-blur-md z-20 flex-shrink-0">
+        <div class="flex items-center gap-3 min-w-0">
+          <button onclick="toggleSidebar()" class="lg:hidden p-2 hover:bg-gray-100 rounded-lg transition-colors flex-shrink-0">
+            <i data-lucide="panel-left" class="w-5 h-5 text-gray-600"></i>
+          </button>
+          <span id="headerTitle" class="font-medium text-gray-800 text-sm truncate">新话题</span>
+        </div>
+        <div class="flex items-center gap-2 flex-shrink-0">
+          <button onclick="toggleDeepThink()" id="deepThinkBtn" class="flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium rounded-lg border border-gray-300 hover:bg-gray-50 transition-all text-gray-600 active:scale-95">
+            <i data-lucide="brain-circuit" class="w-3.5 h-3.5"></i>
+            <span data-i18n="deep_think">深度思考</span>
+          </button>
+          <button onclick="openSettings()" class="p-2 hover:bg-gray-100 rounded-lg transition-colors">
+            <i data-lucide="settings" class="w-5 h-5 text-gray-600"></i>
+          </button>
+        </div>
+      </header>
+
+      <!-- Chat Content -->
+      <div id="chatScroll" class="flex-1 overflow-y-auto relative scroll-smooth">
+        
+        <!-- Empty State -->
+        <div id="emptyState" class="absolute inset-0 flex flex-col items-center justify-center p-6 input-transition">
+          <h1 class="text-4xl font-semibold text-gray-900 mb-10 tracking-tight" data-i18n="greeting">有什么可以帮你?</h1>
+          <div class="w-full max-w-2xl relative" id="centerInputWrap">
+            <div class="relative shadow-xl rounded-2xl bg-white border border-gray-300 focus-within:border-gray-400 focus-within:ring-1 focus-within:ring-gray-300 transition-all">
+              <input type="text" id="centerInput" 
+                class="w-full px-5 py-4 pr-14 text-base bg-transparent rounded-2xl focus:outline-none placeholder-gray-400 text-gray-800"
+                placeholder="随便问..." 
+                onkeydown="if(event.key==='Enter') sendMessage()"
+                autocomplete="off"
+              >
+              <button onclick="sendMessage()" class="absolute right-3 top-1/2 -translate-y-1/2 w-9 h-9 bg-gray-900 hover:bg-gray-800 text-white rounded-full flex items-center justify-center transition-all active:scale-90 disabled:opacity-40 disabled:cursor-not-allowed" id="centerSendBtn">
+                <i data-lucide="arrow-up" class="w-5 h-5"></i>
+              </button>
+            </div>
+            <div class="mt-3 flex justify-center gap-3 text-xs text-gray-400">
+              <span class="px-2 py-1 bg-gray-50 rounded-md border border-gray-100" data-i18n="hint_image">我们支持ai绘图</span>
+            </div>
+          </div>
+        </div>
+
+        <!-- Messages -->
+        <div id="messageArea" class="hidden max-w-3xl mx-auto px-4 py-6 pb-36 space-y-6 w-full">
+          <!-- Messages injected here -->
+        </div>
+      </div>
+
+      <!-- Bottom Input -->
+      <div id="bottomInput" class="hidden absolute bottom-0 left-0 right-0 bg-gradient-to-t from-white via-white to-transparent pt-8 pb-4 px-4 z-10 input-transition">
+        <div class="max-w-3xl mx-auto">
+          <div class="relative shadow-lg rounded-xl bg-white border border-gray-300 focus-within:border-gray-400 focus-within:ring-1 focus-within:ring-gray-300 transition-all">
+            <textarea id="bottomTextarea" rows="1"
+              class="w-full px-4 py-3.5 pr-12 bg-transparent rounded-xl focus:outline-none placeholder-gray-400 text-gray-800 resize-none max-h-32 text-base leading-relaxed"
+              placeholder="随便问..."
+              onkeydown="handleTextareaKeydown(event)"
+              oninput="autoResize(this)"
+            ></textarea>
+            <button onclick="sendMessage()" class="absolute right-3 bottom-3 w-8 h-8 bg-gray-900 hover:bg-gray-800 text-white rounded-lg flex items-center justify-center transition-all active:scale-90 disabled:opacity-40" id="bottomSendBtn">
+              <i data-lucide="arrow-up" class="w-4 h-4"></i>
+            </button>
+          </div>
+          <div class="text-center mt-2 text-[11px] text-gray-400" data-i18n="disclaimer">AI生成内容仅供参考</div>
+        </div>
+      </div>
+    </main>
+  </div>
+
+  <!-- Settings Panel -->
+  <div id="settingsPanel" class="fixed inset-0 z-50 hidden">
+    <div class="absolute inset-0 bg-black/25 backdrop-blur-sm transition-opacity" onclick="closeSettings()"></div>
+    <div class="absolute right-0 top-0 bottom-0 w-[380px] max-w-full bg-white shadow-2xl settings-panel translate-x-full flex flex-col" id="settingsContent">
+      <div class="h-14 px-5 border-b border-gray-200 flex items-center justify-between flex-shrink-0">
+        <h2 class="text-base font-semibold text-gray-900" data-i18n="settings">设置</h2>
+        <button onclick="closeSettings()" class="p-2 hover:bg-gray-100 rounded-lg transition-colors">
+          <i data-lucide="x" class="w-5 h-5 text-gray-500"></i>
+        </button>
+      </div>
+      <div class="flex-1 overflow-y-auto p-5 space-y-6">
+        
+        <!-- Model -->
+        <div class="space-y-2">
+          <label class="text-sm font-medium text-gray-700" data-i18n="model_select">模型选择</label>
+          <select id="modelSelect" onchange="onModelChange()" class="w-full px-3 py-2.5 bg-white border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-gray-400 focus:border-transparent transition-all">
+            <option value="openai/gpt-oss-20b">GPT</option>
+            <option value="google/gemma-3-27b">Gemma</option>
+            <option value="custom" data-i18n="custom_model">自定义模型</option>
+          </select>
+          <div id="customModelWrap" class="hidden">
+            <input type="text" id="customModelInput" placeholder="gpt-4, deepseek-chat, claude-3-opus..." 
+              class="w-full px-3 py-2.5 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-gray-400 mt-2">
+          </div>
+        </div>
+
+        <!-- API -->
+        <div class="space-y-3">
+          <div class="flex items-center justify-between">
+            <label class="text-sm font-medium text-gray-700" data-i18n="api_config">API配置</label>
+            <label class="flex items-center gap-2 cursor-pointer">
+              <input type="checkbox" id="customApiCheck" onchange="onCustomApiToggle()" class="rounded border-gray-300 text-gray-900 focus:ring-gray-500">
+              <span class="text-xs text-gray-500" data-i18n="use_custom_api">使用自定义API</span>
+            </label>
+          </div>
+          <div class="space-y-2">
+            <input type="text" id="settingsApiUrl" value="https://platform.aitools.cfd/api/v1/chat/completions" disabled
+              class="w-full px-3 py-2.5 bg-gray-50 border border-gray-200 rounded-lg text-sm text-gray-600 disabled:cursor-not-allowed focus:outline-none focus:ring-2 focus:ring-gray-400">
+            <input type="password" id="settingsApiKey" value="sk-2f362770790a4440afa6a5fa9bd39615" disabled
+              class="w-full px-3 py-2.5 bg-gray-50 border border-gray-200 rounded-lg text-sm text-gray-600 disabled:cursor-not-allowed focus:outline-none focus:ring-2 focus:ring-gray-400">
+          </div>
+        </div>
+
+        <!-- Language -->
+        <div class="space-y-2">
+          <label class="text-sm font-medium text-gray-700" data-i18n="language">语言</label>
+          <select id="langSelect" onchange="onLanguageChange()" class="w-full px-3 py-2.5 bg-white border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-gray-400">
+            <option value="zh">简体中文</option>
+            <option value="en">English</option>
+          </select>
+        </div>
+
+        <!-- About -->
+        <div class="pt-4 border-t border-gray-200">
+          <div class="bg-gray-50 rounded-xl p-4 space-y-2">
+            <div class="flex items-center gap-2">
+              <div class="w-6 h-6 bg-gray-900 rounded flex items-center justify-center text-white font-bold text-[10px]">Q</div>
+              <span class="font-semibold text-sm text-gray-800">Qusk AI</span>
+            </div>
+            <p class="text-xs text-gray-500">Version 1.0.0 · OpenAI Compatible</p>
+            <p class="text-[11px] text-gray-400 mt-2 font-mono">yeziy114514 禁止盗用</p>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Favorites Panel -->
+  <div id="favPanel" class="fixed inset-0 z-50 hidden">
+    <div class="absolute inset-0 bg-black/25 backdrop-blur-sm" onclick="closeFavorites()"></div>
+    <div class="absolute right-0 top-0 bottom-0 w-[380px] max-w-full bg-white shadow-2xl settings-panel translate-x-full flex flex-col" id="favContent">
+      <div class="h-14 px-5 border-b border-gray-200 flex items-center justify-between flex-shrink-0">
+        <h2 class="text-base font-semibold text-gray-900" data-i18n="favorites">收藏</h2>
+        <button onclick="closeFavorites()" class="p-2 hover:bg-gray-100 rounded-lg transition-colors">
+          <i data-lucide="x" class="w-5 h-5 text-gray-500"></i>
+        </button>
+      </div>
+      <div class="flex-1 overflow-y-auto p-4" id="favList">
+        <div class="text-center text-gray-400 text-sm mt-20" data-i18n="no_favorites">暂无收藏内容</div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Image Generation Modal -->
+  <div id="imgModal" class="fixed inset-0 z-[60] hidden items-center justify-center bg-black/40 backdrop-blur-sm">
+    <div class="bg-white rounded-2xl p-8 w-[360px] shadow-2xl text-center mx-4">
+      <div class="relative w-24 h-24 mx-auto mb-5">
+        <svg class="w-24 h-24" viewBox="0 0 100 100">
+          <circle cx="50" cy="50" r="44" stroke="#e5e7eb" stroke-width="6" fill="none"/>
+          <circle id="progCircle" cx="50" cy="50" r="44" stroke="#1f2937" stroke-width="6" fill="none" 
+            stroke-dasharray="276.46" stroke-dashoffset="276.46" stroke-linecap="round" class="progress-ring-circle"/>
+        </svg>
+        <div class="absolute inset-0 flex items-center justify-center">
+          <span id="progText" class="text-xl font-bold text-gray-900 tabular-nums">0%</span>
+        </div>
+      </div>
+      <h3 class="text-lg font-semibold text-gray-900 mb-1" data-i18n="generating_image">正在生成图片</h3>
+      <p id="genStatus" class="text-sm text-gray-500 mb-6 h-5">初始化...</p>
+      <div class="w-full bg-gray-100 rounded-full h-1.5 mb-4 overflow-hidden">
+        <div id="progBar" class="h-full bg-gray-800 rounded-full transition-all duration-300" style="width: 0%"></div>
+      </div>
+      <button onclick="cancelImageGen()" class="px-5 py-2 text-sm text-gray-600 hover:bg-gray-100 rounded-lg transition-colors border border-gray-200" data-i18n="cancel">取消</button>
+    </div>
+  </div>
+
+  <script>
+    // ==================== I18n ====================
+    const i18nData = {
+      zh: {
+        new_chat: '新建话题', settings: '设置', deep_think: '深度思考',
+        greeting: '有什么可以帮你?', placeholder: '随便问...',
+        hint_image: '我们支持AI绘图', disclaimer: 'AI生成内容仅供参考',
+        model_select: '模型选择', custom_model: '自定义模型',
+        api_config: 'API配置', use_custom_api: '使用自定义API',
+        language: '语言', generating_image: '正在生成图片',
+        cancel: '取消', rotate_hint: '请旋转设备至横屏使用',
+        rename: '重命名', delete: '删除', new_topic: '新话题',
+        thinking: '深度思考', copy: '复制', regenerate: '重新生成',
+        stop: '停止', favorites: '收藏', about: '关于',
+        no_favorites: '暂无收藏内容', confirm_delete: '确定删除此话题?',
+        stop_gen: '停止生成', image_gen_done: '好的，这就为你生成'
+      },
+      en: {
+        new_chat: 'New Chat', settings: 'Settings', deep_think: 'Deep Think',
+        greeting: 'How can I help you?', placeholder: 'Ask anything...',
+        hint_image: 'Type "generate image" to create images', disclaimer: 'AI-generated content for reference only',
+        model_select: 'Model', custom_model: 'Custom Model',
+        api_config: 'API Config', use_custom_api: 'Use Custom API',
+        language: 'Language', generating_image: 'Generating Image',
+        cancel: 'Cancel', rotate_hint: 'Please rotate to landscape',
+        rename: 'Rename', delete: 'Delete', new_topic: 'New Topic',
+        thinking: 'Deep Thinking', copy: 'Copy', regenerate: 'Regenerate',
+        stop: 'Stop', favorites: 'Favorites', about: 'About',
+        no_favorites: 'No favorites yet', confirm_delete: 'Delete this chat?',
+        stop_gen: 'Stop', image_gen_done: 'Sure, generating now'
+      }
+    };
+
+    // ==================== State ====================
+    let state = {
+      topics: [],
+      messages: {},
+      currentId: null,
+      favorites: [],
+      settings: {
+        model: 'openai/gpt-oss-20b',
+        customModel: '',
+        apiUrl: 'https://platform.aitools.cfd/api/v1/chat/completions',
+        apiKey: 'sk-2f362770790a4440afa6a5fa9bd39615',
+        useCustomApi: false,
+        lang: 'zh',
+        deepThink: false
+      },
+      generating: false,
+      abortCtrl: null,
+      sidebarOpen: true
+    };
+
+    function load() {
+      const raw = localStorage.getItem('qusk_state');
+      if (raw) {
+        const parsed = JSON.parse(raw);
+        state = { ...state, ...parsed };
+        if (parsed.settings) state.settings = { ...state.settings, ...parsed.settings };
+      }
+      if (!state.topics.length) createTopic(true);
+      else renderAll();
+    }
+
+    function save() {
+      localStorage.setItem('qusk_state', JSON.stringify(state));
+    }
+
+    // ==================== Topics ====================
+    function createTopic(silent = false) {
+      const id = Date.now().toString(36) + Math.random().toString(36).substr(2, 5);
+      const title = state.settings.lang === 'zh' ? i18nData.zh.new_topic : i18nData.en.new_topic;
+      state.topics.unshift({ id, title, ts: Date.now() });
+      state.messages[id] = [];
+      state.currentId = id;
+      if (!silent) save();
+      renderAll();
+      return id;
+    }
+
+    function switchTopic(id) {
+      state.currentId = id;
+      save();
+      renderAll();
+      if (window.innerWidth < 1024) toggleSidebar();
+    }
+
+    function deleteTopic(id, ev) {
+      ev.stopPropagation();
+      if (!confirm(i18n().confirm_delete)) return;
+      state.topics = state.topics.filter(t => t.id !== id);
+      delete state.messages[id];
+      state.favorites = state.favorites.filter(f => f.topicId !== id);
+      if (state.currentId === id) state.currentId = state.topics[0]?.id || createTopic(true);
+      save();
+      renderAll();
+    }
+
+    function renameTopic(id, ev) {
+      ev.stopPropagation();
+      const t = state.topics.find(x => x.id === id);
+      const name = prompt(i18n().rename, t.title);
+      if (name?.trim()) { t.title = name.trim(); save(); renderTopics(); renderHeader(); }
+    }
+
+    // ==================== Rendering ====================
+    function renderAll() {
+      renderTopics();
+      renderHeader();
+      renderChat();
+      applyLang();
+      updateDeepThinkBtn();
+    }
+
+    function renderTopics() {
+      const el = document.getElementById('topicList');
+      el.innerHTML = '';
+      state.topics.forEach(t => {
+        const active = t.id === state.currentId;
+        const div = document.createElement('div');
+        div.className = `sidebar-item group flex items-center gap-2 px-3 py-2.5 rounded-lg cursor-pointer mb-0.5 ${active ? 'bg-gray-200/80' : 'hover:bg-gray-100'}`;
+        div.onclick = () => switchTopic(t.id);
+        div.innerHTML = `
+          <i data-lucide="message-square" class="w-4 h-4 text-gray-500 flex-shrink-0"></i>
+          <span class="text-sm text-gray-700 truncate flex-1 min-w-0">${escapeHtml(t.title)}</span>
+          <div class="topic-actions flex items-center gap-0.5 opacity-0 transition-opacity">
+            <button onclick="renameTopic('${t.id}', event)" class="p-1 hover:bg-gray-300/70 rounded transition-colors"><i data-lucide="pencil" class="w-3 h-3 text-gray-500"></i></button>
+            <button onclick="deleteTopic('${t.id}', event)" class="p-1 hover:bg-gray-300/70 rounded transition-colors"><i data-lucide="trash-2" class="w-3 h-3 text-gray-500"></i></button>
+          </div>`;
+        el.appendChild(div);
+      });
+      lucide.createIcons();
+    }
+
+    function renderHeader() {
+      const t = state.topics.find(x => x.id === state.currentId);
+      document.getElementById('headerTitle').textContent = t ? t.title : 'Qusk AI';
+    }
+
+    function renderChat() {
+      const msgs = state.messages[state.currentId] || [];
+      const empty = document.getElementById('emptyState');
+      const area = document.getElementById('messageArea');
+      const bottom = document.getElementById('bottomInput');
+
+      if (!msgs.length) {
+        empty.classList.remove('hidden');
+        area.classList.add('hidden');
+        bottom.classList.add('hidden');
+        area.innerHTML = '';
+      } else {
+        empty.classList.add('hidden');
+        area.classList.remove('hidden');
+        bottom.classList.remove('hidden');
+        area.innerHTML = '';
+        msgs.forEach((m, i) => area.appendChild(buildMsgEl(m, i)));
+        area.querySelectorAll('pre code').forEach(b => hljs.highlightElement(b));
+        addCopyButtons();
+        lucide.createIcons();
+        scrollToBottom();
+      }
+    }
+
+    function buildMsgEl(m, idx) {
+      const div = document.createElement('div');
+      div.className = 'msg-anim';
+      div.id = `msg-${idx}`;
+
+      if (m.role === 'user') {
+        div.innerHTML = `
+          <div class="flex justify-end">
+            <div class="max-w-[85%] bg-gray-100 rounded-2xl px-5 py-3 text-gray-800 text-[15px] leading-relaxed">${escapeHtml(m.content)}</div>
+          </div>`;
+        return div;
+      }
+
+      // assistant or image_gen
+      let html = '';
+      if (m.thinking) {
+        html += `<div class="thinking-box mb-3 p-3 rounded-lg text-sm text-gray-600">
+          <div class="flex items-center gap-2 mb-1 font-medium text-gray-700 text-xs uppercase tracking-wider">
+            <i data-lucide="brain-circuit" class="w-3.5 h-3.5"></i> ${i18n().thinking}
+          </div>
+          <div class="opacity-80 leading-relaxed">${escapeHtml(m.thinking)}</div>
+        </div>`;
+      }
+
+      html += `<div class="prose prose-sm max-w-none text-gray-800 leading-relaxed">${marked.parse(m.content || '')}</div>`;
+
+      if (m.imageUrl) {
+        html += `<div class="mt-4 rounded-xl overflow-hidden border border-gray-200 shadow-sm max-w-md">
+          <img src="${m.imageUrl}" class="w-full h-auto object-cover" alt="Generated" onload="scrollToBottom()">
+        </div>`;
+      }
+
+      if (m.generating) {
+        html += `<div class="mt-2 flex items-center gap-2 text-gray-400 text-sm">
+          <div class="w-4 h-4 border-2 border-gray-300 border-t-gray-800 rounded-full animate-spin"></div>
+          <span>${i18n().thinking}...</span>
+          <button onclick="stopGeneration()" class="ml-2 px-2 py-0.5 text-xs border border-gray-300 rounded hover:bg-gray-50 text-gray-500">${i18n().stop_gen}</button>
+        </div>`;
+      }
+
+      div.innerHTML = `
+        <div class="flex justify-start">
+          <div class="max-w-[85%] w-full">
+            <div class="flex items-center gap-2 mb-1.5">
+              <div class="w-6 h-6 bg-gray-900 rounded-full flex items-center justify-center text-white text-[10px] font-bold">Q</div>
+              <span class="text-xs text-gray-500 font-medium">Qusk AI</span>
+            </div>
+            ${html}
+            <div class="flex items-center gap-1 mt-2 opacity-0 hover:opacity-100 transition-opacity">
+              <button onclick="copyMsg(${idx})" class="p-1.5 hover:bg-gray-100 rounded-md text-gray-400 hover:text-gray-600 transition-colors" title="${i18n().copy}">
+                <i data-lucide="copy" class="w-3.5 h-3.5"></i>
+              </button>
+              <button onclick="regenMsg(${idx})" class="p-1.5 hover:bg-gray-100 rounded-md text-gray-400 hover:text-gray-600 transition-colors" title="${i18n().regenerate}">
+                <i data-lucide="refresh-cw" class="w-3.5 h-3.5"></i>
+              </button>
+              <button onclick="toggleFav(${idx})" class="p-1.5 hover:bg-gray-100 rounded-md text-gray-400 hover:text-gray-600 transition-colors" title="Favorite">
+                <i data-lucide="bookmark${isFav(idx) ? '' : '-plus'}" class="w-3.5 h-3.5"></i>
+              </button>
+            </div>
+          </div>
+        </div>`;
+      return div;
+    }
+
+    function addCopyButtons() {
+      document.querySelectorAll('pre').forEach(pre => {
+        if (pre.querySelector('.copy-code-btn')) return;
+        const btn = document.createElement('button');
+        btn.className = 'copy-code-btn';
+        btn.textContent = 'Copy';
+        btn.onclick = () => {
+          navigator.clipboard.writeText(pre.querySelector('code')?.textContent || '');
+          btn.textContent = 'Copied';
+          setTimeout(() => btn.textContent = 'Copy', 1500);
+        };
+        pre.appendChild(btn);
+      });
+    }
+
+    function updateLastMsg() {
+      const msgs = state.messages[state.currentId];
+      const m = msgs[msgs.length - 1];
+      const el = document.getElementById(`msg-${msgs.length - 1}`);
+      if (!el) return;
+      const newEl = buildMsgEl(m, msgs.length - 1);
+      el.replaceWith(newEl);
+      newEl.querySelectorAll('pre code').forEach(b => hljs.highlightElement(b));
+      addCopyButtons();
+      lucide.createIcons();
+      scrollToBottom();
+    }
+
+    // ==================== Chat Logic ====================
+    async function sendMessage() {
+      const cInput = document.getElementById('centerInput');
+      const bInput = document.getElementById('bottomTextarea');
+      const text = (cInput.value || bInput.value).trim();
+      if (!text || state.generating) return;
+
+      cInput.value = ''; bInput.value = ''; autoResize(bInput);
+
+      const msgs = state.messages[state.currentId];
+      msgs.push({ role: 'user', content: text });
+
+      // Auto rename topic on first message
+      const topic = state.topics.find(t => t.id === state.currentId);
+      if (msgs.length === 1 && (topic.title === i18nData.zh.new_topic || topic.title === i18nData.en.new_topic)) {
+        topic.title = text.slice(0, 24) + (text.length > 24 ? '...' : '');
+        save(); renderTopics(); renderHeader();
+      }
+
+      save(); renderChat();
+
+      // Check image generation intent
+      const imgTriggers = ['生成图片', 'generate image', 'draw', '画画', '作图', '生成图像', 'create image', '画一张', '给我画'];
+      const isImg = imgTriggers.some(k => text.toLowerCase().includes(k.toLowerCase()));
+
+      if (isImg) {
+        await doImageGen(text);
+      } else {
+        await doChat();
+      }
+    }
+
+    async function doImageGen(prompt) {
+      // First send text confirmation
+      const msgs = state.messages[state.currentId];
+      msgs.push({ role: 'assistant', content: i18n().image_gen_done, generating: true });
+      save(); renderChat();
+
+      // Show modal
+      const modal = document.getElementById('imgModal');
+      const circle = document.getElementById('progCircle');
+      const percent = document.getElementById('progText');
+      const bar = document.getElementById('progBar');
+      const status = document.getElementById('genStatus');
+      modal.classList.remove('hidden');
+      modal.classList.add('flex');
+
+      const circumference = 2 * Math.PI * 44;
+      let progress = 0;
+
+      const interval = setInterval(() => {
+        progress += Math.random() * 12 + 3;
+        if (progress > 95) progress = 95;
+        const offset = circumference - (progress / 100) * circumference;
+        circle.style.strokeDashoffset = offset;
+        percent.textContent = Math.floor(progress) + '%';
+        bar.style.width = progress + '%';
+        const statuses = ['初始化中...', '解析提示词...', '调用绘图API...', '生成图像中...', '优化细节...'];
+        status.textContent = statuses[Math.min(Math.floor(progress / 20), 4)];
+      }, 400);
+
+      // Use free Pollinations API
+      const seed = Math.floor(Math.random() * 999999);
+      const encoded = encodeURIComponent(prompt);
+      const imageUrl = `https://image.pollinations.ai/prompt/${encoded}?width=1024&height=1024&seed=${seed}&nologo=true&enhance=true`;
+
+      const img = new Image();
+      img.onload = () => {
+        clearInterval(interval);
+        circle.style.strokeDashoffset = 0;
+        percent.textContent = '100%';
+        bar.style.width = '100%';
+        status.textContent = '完成!';
+
+        setTimeout(() => {
+          modal.classList.add('hidden');
+          modal.classList.remove('flex');
+          // Replace the generating message with final one
+          msgs.pop();
+          msgs.push({ role: 'assistant', content: i18n().image_gen_done, imageUrl });
+          save(); renderChat();
+        }, 600);
+      };
+
+      img.onerror = () => {
+        clearInterval(interval);
+        modal.classList.add('hidden');
+        modal.classList.remove('flex');
+        msgs.pop();
+        msgs.push({ role: 'assistant', content: '图片生成失败，请稍后重试。' });
+        save(); renderChat();
+      };
+
+      img.src = imageUrl;
+    }
+
+    function cancelImageGen() {
+      state.generating = false;
+      document.getElementById('imgModal').classList.add('hidden');
+      document.getElementById('imgModal').classList.remove('flex');
+      const msgs = state.messages[state.currentId];
+      if (msgs[msgs.length - 1]?.generating) { msgs.pop(); save(); renderChat(); }
+    }
+
+    async function doChat() {
+      state.generating = true;
+      const msgs = state.messages[state.currentId];
+      const aiIdx = msgs.length;
+      msgs.push({ role: 'assistant', content: '', thinking: state.settings.deepThink ? '' : null, generating: true });
+      renderChat();
+
+      const url = state.settings.useCustomApi ? document.getElementById('settingsApiUrl').value : state.settings.apiUrl;
+      const key = state.settings.useCustomApi ? document.getElementById('settingsApiKey').value : state.settings.apiKey;
+      const model = state.settings.model === 'custom' ? (document.getElementById('customModelInput').value || 'gpt-4') : state.settings.model;
+
+      const messages = msgs.slice(0, -1).map(m => ({
+        role: m.role === 'image_gen' ? 'assistant' : m.role,
+        content: m.content
+      }));
+
+      state.abortCtrl = new AbortController();
+
+      try {
+        const res = await fetch(url, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${key}` },
+          body: JSON.stringify({ model, messages, stream: true, temperature: 0.7 }),
+          signal: state.abortCtrl.signal
+        });
+
+        if (!res.ok) throw new Error(`HTTP ${res.status}`);
+
+        const reader = res.body.getReader();
+        const decoder = new TextDecoder();
+        let buf = '';
+
+        while (true) {
+          const { done, value } = await reader.read();
+          if (done) break;
+          buf += decoder.decode(value, { stream: true });
+          const lines = buf.split('\n');
+          buf = lines.pop();
+
+          for (const line of lines) {
+            if (!line.trim() || line.includes('[DONE]')) continue;
+            if (line.startsWith('data: ')) {
+              try {
+                const data = JSON.parse(line.slice(6));
+                const delta = data.choices?.[0]?.delta;
+                if (delta?.content) msgs[aiIdx].content += delta.content;
+                if (state.settings.deepThink && delta?.reasoning) msgs[aiIdx].thinking = (msgs[aiIdx].thinking || '') + delta.reasoning;
+                msgs[aiIdx].generating = true;
+                updateLastMsg();
+              } catch (e) {}
+            }
+          }
+        }
+
+        msgs[aiIdx].generating = false;
+        save(); renderChat();
+      } catch (err) {
+        if (err.name !== 'AbortError') {
+          msgs[aiIdx].content = 'Error: ' + err.message;
+          msgs[aiIdx].generating = false;
+          save(); renderChat();
+        }
+      } finally {
+        state.generating = false;
+        state.abortCtrl = null;
+      }
+    }
+
+    function stopGeneration() {
+      if (state.abortCtrl) { state.abortCtrl.abort(); state.abortCtrl = null; }
+      state.generating = false;
+      const msgs = state.messages[state.currentId];
+      const last = msgs[msgs.length - 1];
+      if (last?.role === 'assistant') { last.generating = false; save(); renderChat(); }
+    }
+
+    // ==================== Actions ====================
+    function copyMsg(idx) {
+      const m = state.messages[state.currentId][idx];
+      navigator.clipboard.writeText(m.content);
+    }
+
+    function regenMsg(idx) {
+      const msgs = state.messages[state.currentId];
+      state.messages[state.currentId] = msgs.slice(0, idx);
+      save(); renderChat(); doChat();
+    }
+
+    function isFav(idx) {
+      const m = state.messages[state.currentId][idx];
+      return state.favorites.some(f => f.content === m.content && f.topicId === state.currentId);
+    }
+
+    function toggleFav(idx) {
+      const m = state.messages[state.currentId][idx];
+      const existing = state.favorites.findIndex(f => f.content === m.content && f.topicId === state.currentId);
+      if (existing >= 0) state.favorites.splice(existing, 1);
+      else state.favorites.push({ ...m, topicId: state.currentId, ts: Date.now() });
+      save(); renderChat();
+    }
+
+    function openFavorites() {
+      document.getElementById('favPanel').classList.remove('hidden');
+      setTimeout(() => document.getElementById('favContent').classList.remove('translate-x-full'), 10);
+      renderFavorites();
+    }
+
+    function closeFavorites() {
+      document.getElementById('favContent').classList.add('translate-x-full');
+      setTimeout(() => document.getElementById('favPanel').classList.add('hidden'), 300);
+    }
+
+    function renderFavorites() {
+      const el = document.getElementById('favList');
+      if (!state.favorites.length) {
+        el.innerHTML = `<div class="text-center text-gray-400 text-sm mt-20">${i18n().no_favorites}</div>`;
+        return;
+      }
+      el.innerHTML = '';
+      [...state.favorites].reverse().forEach(f => {
+        const div = document.createElement('div');
+        div.className = 'bg-gray-50 rounded-lg p-3 mb-2 border border-gray-100 hover:border-gray-300 transition-colors cursor-pointer';
+        div.onclick = () => { switchTopic(f.topicId); closeFavorites(); };
+        div.innerHTML = `
+          <div class="text-xs text-gray-400 mb-1">${escapeHtml(f.topicId === state.currentId ? '当前话题' : '已收藏')}</div>
+          <div class="text-sm text-gray-800 line-clamp-3">${escapeHtml(f.content.slice(0, 200))}</div>
+        `;
+        el.appendChild(div);
+      });
+    }
+
+    // ==================== Settings ====================
+    function openSettings() {
+      document.getElementById('settingsPanel').classList.remove('hidden');
+      setTimeout(() => document.getElementById('settingsContent').classList.remove('translate-x-full'), 10);
+      document.getElementById('modelSelect').value = state.settings.model;
+      document.getElementById('customModelInput').value = state.settings.customModel;
+      document.getElementById('langSelect').value = state.settings.lang;
+      document.getElementById('customApiCheck').checked = state.settings.useCustomApi;
+      document.getElementById('settingsApiUrl').value = state.settings.apiUrl;
+      document.getElementById('settingsApiKey').value = state.settings.apiKey;
+      onModelChange(); onCustomApiToggle();
+    }
+
+    function closeSettings() {
+      document.getElementById('settingsContent').classList.add('translate-x-full');
+      setTimeout(() => document.getElementById('settingsPanel').classList.add('hidden'), 300);
+    }
+
+    function onModelChange() {
+      const val = document.getElementById('modelSelect').value;
+      state.settings.model = val;
+      document.getElementById('customModelWrap').classList.toggle('hidden', val !== 'custom');
+      save();
+    }
+
+    function onCustomApiToggle() {
+      const checked = document.getElementById('customApiCheck').checked;
+      state.settings.useCustomApi = checked;
+      document.getElementById('settingsApiUrl').disabled = !checked;
+      document.getElementById('settingsApiKey').disabled = !checked;
+      if (!checked) {
+        document.getElementById('settingsApiUrl').value = 'https://platform.aitools.cfd/api/v1/chat/completions';
+        document.getElementById('settingsApiKey').value = 'sk-2f362770790a4440afa6a5fa9bd39615';
+      }
+      save();
+    }
+
+    function onLanguageChange() {
+      state.settings.lang = document.getElementById('langSelect').value;
+      save(); applyLang(); renderTopics(); renderHeader(); renderChat();
+    }
+
+    function toggleDeepThink() {
+      state.settings.deepThink = !state.settings.deepThink;
+      save(); updateDeepThinkBtn();
+    }
+
+    function updateDeepThinkBtn() {
+      const btn = document.getElementById('deepThinkBtn');
+      if (state.settings.deepThink) {
+        btn.classList.add('bg-gray-100', 'border-gray-400', 'text-gray-900');
+      } else {
+        btn.classList.remove('bg-gray-100', 'border-gray-400', 'text-gray-900');
+      }
+    }
+
+    function toggleSidebar() {
+      const sb = document.getElementById('sidebar');
+      state.sidebarOpen = !state.sidebarOpen;
+      if (window.innerWidth < 1024) {
+        sb.classList.toggle('absolute');
+        sb.classList.toggle('z-30');
+        sb.classList.toggle('h-full');
+        sb.classList.toggle('-translate-x-full');
+      }
+    }
+
+    // ==================== Helpers ====================
+    function i18n() { return i18nData[state.settings.lang] || i18nData.zh; }
+
+    function applyLang() {
+      const d = i18n();
+      document.querySelectorAll('[data-i18n]').forEach(el => {
+        const k = el.getAttribute('data-i18n');
+        if (d[k]) el.textContent = d[k];
+      });
+      document.getElementById('centerInput').placeholder = d.placeholder;
+      document.getElementById('bottomTextarea').placeholder = d.placeholder;
+    }
+
+    function escapeHtml(t) {
+      const d = document.createElement('div');
+      d.textContent = t;
+      return d.innerHTML;
+    }
+
+    function handleTextareaKeydown(e) {
+      if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); sendMessage(); }
+    }
+
+    function autoResize(ta) {
+      ta.style.height = 'auto';
+      ta.style.height = Math.min(ta.scrollHeight, 160) + 'px';
+    }
+
+    function scrollToBottom() {
+      const el = document.getElementById('chatScroll');
+      el.scrollTop = el.scrollHeight;
+    }
+
+    // ==================== Init ====================
+    load();
+    lucide.createIcons();
+
+    // Expose for inline handlers
+    window.createTopic = createTopic;
+    window.switchTopic = switchTopic;
+    window.deleteTopic = deleteTopic;
+    window.renameTopic = renameTopic;
+    window.sendMessage = sendMessage;
+    window.handleTextareaKeydown = handleTextareaKeydown;
+    window.autoResize = autoResize;
+    window.toggleSidebar = toggleSidebar;
+    window.openSettings = openSettings;
+    window.closeSettings = closeSettings;
+    window.onModelChange = onModelChange;
+    window.onCustomApiToggle = onCustomApiToggle;
+    window.onLanguageChange = onLanguageChange;
+    window.toggleDeepThink = toggleDeepThink;
+    window.copyMsg = copyMsg;
+    window.regenMsg = regenMsg;
+    window.toggleFav = toggleFav;
+    window.stopGeneration = stopGeneration;
+    window.openFavorites = openFavorites;
+    window.closeFavorites = closeFavorites;
+    window.cancelImageGen = cancelImageGen;
+  </script>
+</body>
+</html>
